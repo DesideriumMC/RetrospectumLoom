@@ -1,0 +1,59 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build and package
+        run: bash ./gradlew --no-daemon --console=plain clean build validatePlugins loomDistribution
+      - name: Verify publication
+        run: python scripts/verify_artifacts.py
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: retrospectum-loom-${{ runner.os }}
+          path: |
+            build/libs/retrospectum-loom-*.jar
+            build/distributions/*-maven.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: retrospectum-loom-reports-${{ runner.os }}
+          path: |
+            build/reports/
+            build/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
