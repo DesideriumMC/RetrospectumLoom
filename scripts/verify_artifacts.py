@@ -1,10 +1,12 @@
 """Verify the plugin descriptor, Maven marker and release bundle."""
+import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
 version = dict(line.split('=', 1) for line in (root / 'gradle.properties').read_text().splitlines() if '=' in line)['version']
+version = os.environ.get('RELEASE_VERSION', version)
 repo = root / 'build/maven'
 artifact = repo / f'dev/desiderium/retro/retrospectum-loom/{version}/retrospectum-loom-{version}'
 for suffix in ('.jar', '-sources.jar', '-javadoc.jar', '.pom'):

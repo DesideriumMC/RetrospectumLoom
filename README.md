@@ -78,3 +78,20 @@ workflow's **Artifacts** section. Test reports are uploaded even on failure.
 CI does not publish to a remote Maven repository or create GitHub releases.
 
 Override the version for a future build with `-Pversion=<version>`.
+
+For a version override, set `RELEASE_VERSION` to the same value when running
+`python scripts/verify_artifacts.py`. CI passes this value to Gradle as `-Pversion`.
+
+## Hosted Maven releases
+
+The public repository is `https://maven.desiderium.dev/releases/`.
+The **Release Maven** workflow verifies Linux and Windows builds and checks R2
+credentials. Enable its **publish** input to upload the Linux Maven artifacts.
+Use a new stable `MAJOR.MINOR.PATCH` version for changed binaries. Existing files
+are accepted only when identical, so interrupted uploads can be retried. Metadata
+updates preserve earlier versions and run serially within this repository.
+
+Configure organization or repository Actions secrets `R2_ACCESS_KEY_ID` and
+`R2_SECRET_ACCESS_KEY`, restricted to the `desiderium-maven` bucket. Organization
+secrets must grant this repository access. A run with **publish** disabled builds
+and checks credentials without uploading artifacts.

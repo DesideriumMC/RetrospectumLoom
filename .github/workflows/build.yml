@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: '0.1.0'
 
 permissions:
   contents: read
@@ -11,6 +16,9 @@ permissions:
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  RELEASE_VERSION: ${{ inputs.version || '0.1.0' }}
 
 jobs:
   build:
@@ -35,7 +43,7 @@ jobs:
           python-version: '3.13'
       - uses: gradle/actions/setup-gradle@v6
       - name: Build and package
-        run: bash ./gradlew --no-daemon --console=plain clean build validatePlugins loomDistribution
+        run: bash ./gradlew --no-daemon --console=plain "-Pversion=$RELEASE_VERSION" clean build validatePlugins loomDistribution
       - name: Verify publication
         run: python scripts/verify_artifacts.py
       - name: Upload build artifacts
@@ -47,6 +55,15 @@ jobs:
             build/distributions/*-maven.zip
           if-no-files-found: error
           retention-days: 14
+      - name: Upload Maven repository
+        uses: actions/upload-artifact@v6
+        with:
+          name: maven-repository-${{ runner.os }}
+          path: build/maven/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Test publisher
+        run: python -m unittest discover -s scripts -p 'test_publish_maven.py'
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v6
