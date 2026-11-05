@@ -56,51 +56,19 @@ public abstract class NewProvider<SELF extends NewProvider<SELF>> {
 		return (SELF) this;
 	}
 	
-	/**
-	 * If refresh-dependencies mode is enabled, deletes the file or directory at {@code path}.<br>
-	 * Then, if {@code path} does not exist, the {@code fileCreator} is invoked with the path as an argument.
-	 * This procedure is expected to create a nonempty file or a directory at that location.
-	 * Returns {@code path}.
-	 */
-	protected final Path getOrCreate(Path path, ThrowyConsumer<Path> fileCreator) throws Exception {
-		Files.createDirectories(path.toAbsolutePath().getParent());
-		Path lockPath = path.resolveSibling(path.getFileName() + ".provider.lock").toAbsolutePath().normalize();
-		synchronized (lockPath.toString().intern()) {
-			try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(lockPath,
-					java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
-				 java.nio.channels.FileLock lock = channel.lock()) {
-				return getOrCreateLocked(path, fileCreator);
-			}
-		}
-	}
+    /** Cached derived artifacts are generated in staging; failed refresh keeps the previous output. */
+    protected final Path getOrCreate(Path path, ThrowyConsumer<Path> fileCreator) throws Exception {
+        return net.fabricmc.loom.util.CacheLock.withLock(WellKnownLocations.getCacheLocks(project), path, () -> {
+            if (Files.exists(path) && !extension.refreshDependencies
+                && (Files.isDirectory(path) || Files.size(path) > 0)) {
+                log.info("Cache hit at {}", path);
+                return path;
+            }
+            log.info("Generating cache artifact {}", path);
+            return net.fabricmc.loom.util.ArtifactTransaction.write(path, fileCreator::accept);
+        });
+    }
 
-	private Path getOrCreateLocked(Path path, ThrowyConsumer<Path> fileCreator) throws Exception {
-		if(extension.refreshDependencies) {
-			project.getLogger().warn("Ignoring " + path + " because refresh-dependencies mode is set");
-			LoomGradlePlugin.delete(project, path);
-		}
-		
-		if(Files.notExists(path)) {
-			project.getLogger().info("Creating file at " + path);
-			
-			try {
-				fileCreator.accept(path);
-			//check that the file creator actually did create the file, and it's not empty
-			if(Files.notExists(path)) throw new IllegalStateException("Runnable " + fileCreator + " should have created a file at " + path);
-			if(!Files.isDirectory(path) && Files.size(path) == 0) throw new IllegalStateException("Runnable " + fileCreator + " created a zero-byte file at " + path);
-			} catch (Exception failure) {
-				LoomGradlePlugin.delete(project, path);
-				throw failure;
-			}
-			
-			//TODO: write props to a file in user-readable form, just for debugging?
-		} else {
-			project.getLogger().info("Cache hit at " + path);
-		}
-		
-		return path;
-	}
-	
 	//TODO: reimpl projectmappiness? Shouldn't be too hard, read off the Props
 	public final Path getCacheDir() {
 		return WellKnownLocations.getUserCache(project);

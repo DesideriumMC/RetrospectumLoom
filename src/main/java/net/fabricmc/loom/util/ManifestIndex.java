@@ -30,6 +30,6 @@ public class ManifestIndex {
 	public transient Map<String, VersionData> versions = new HashMap<>();
 	
 	public static class VersionData {
-		public String id, url;
+		public String id, url, sha1;
 	}
 }

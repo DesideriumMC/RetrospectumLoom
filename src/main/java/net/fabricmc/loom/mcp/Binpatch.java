@@ -84,7 +84,7 @@ public class Binpatch {
 		 * Reads a Forge binpatches file, "binpatches.pack.lzma". The patches are wrapped in a jar, which is wrapped in pack200,
 		 * which is wrapped further in a layer of LZMA compression. I guess they were really worried about filesize?
 		 *
-		 * Previous versions of retrospectum-loom worked around a bug in commons-compress's Pack200CompressorInputStream.
+		 * Earlier upstream Voldeloom versions worked around a bug in commons-compress's Pack200CompressorInputStream.
 		 * https://github.com/CrackedPolishedBlackstoneBricksMC/voldeloom/blob/10cb0c2f1d51c0570902e16d410868114baaba03/src/main/java/net/fabricmc/loom/mcp/BinpatchesPack.java#L63-L92
 		 * This bug appears to be fixed.
 		 */

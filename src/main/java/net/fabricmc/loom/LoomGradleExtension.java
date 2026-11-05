@@ -48,6 +48,7 @@ import java.util.List;
 @SuppressWarnings("CanBeFinal") //settable from buildscript
 public class LoomGradleExtension {
     boolean useIdeMinecraftModule;
+    boolean useMixinBootstrap;
     final java.util.Map<String, String> mixinRefmaps = new java.util.LinkedHashMap<>();
     final java.util.Set<String> mixinConfigs = new java.util.LinkedHashSet<>();
     /** Register a packaged config and its development discovery entry. */
@@ -56,9 +57,9 @@ public class LoomGradleExtension {
             throw new org.gradle.api.GradleException("Mixin config must be a relative JSON resource path: " + name);
         if (!mixinConfigs.add(name)) throw new org.gradle.api.GradleException("Mixin config already registered: " + name);
         project.getTasks().named("jar", org.gradle.jvm.tasks.Jar.class).configure(t ->
-            t.getManifest().attributes(java.util.Collections.singletonMap("RetroMixinConfigs", String.join(",", mixinConfigs))));
+            t.getManifest().attributes(java.util.Collections.singletonMap("MixinConfigs", String.join(",", mixinConfigs))));
     }
-	/** Enable experimental Mixin AP/refmap wiring for a Java source set. */
+	/** Enable Mixin AP/refmap wiring for a Java source set. */
 	public void mixin(String sourceSet, String refmap) {
 		MixinIntegration.configure(project, this, sourceSet, refmap);
 	}
@@ -147,7 +148,7 @@ public class LoomGradleExtension {
 	/**
 	 * This *JavaVersion* contains the default toolchain Java version, used when a run configuration does not configure a Java version of its own.
 	 *
-	 * Note that it's a JavaVersion, and not a JavaLanguageVersion. This is because Retrospectum Loom remains source-compatible with Gradle 4, which doesn't have that class.
+	 * Note that it's a JavaVersion, and not a JavaLanguageVersion. This representation is inherited from upstream's Gradle 4 compatibility layer.
 	 * The setter methods will accept JavaLanguageVersions and convert them to JavaVersions.
 	 */
 	public JavaVersion defaultRunToolchainVersion = JavaVersion.VERSION_1_8;
@@ -155,7 +156,7 @@ public class LoomGradleExtension {
 	/**
 	 * This *string* contains the default toolchain vendor, used when a run configuration does not configure a vendor of its own.
 	 * 
-	 * Note that it's a string, and not a JvmVendorSpec. Same reason as above.
+	 * Note that it's a string, and not a JvmVendorSpec. This representation is also inherited from upstream.
 	 * The setter methods will accept JvmVendorSpecs and convert them to strings.
 	 */
 	public String defaultRunToolchainVendor = "ADOPTIUM";

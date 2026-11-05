@@ -28,6 +28,11 @@ public class WellKnownLocations {
 		return mkdirs(project.getGradle().getGradleUserHomeDir().toPath().resolve("caches").resolve("retrospectum-loom"));
 	}
 	
+    /** Shared lock namespace for both global and project-specific artifact targets. */
+    public static Path getCacheLocks(Project project) {
+        return mkdirs(getUserCache(project).resolve("locks"));
+    }
+
 	/**
 	 * A project-specific cache. Used for items that have some dependency on the current project, like customized
 	 * mappings, custom Minecraft version, or user-specified access transformers.

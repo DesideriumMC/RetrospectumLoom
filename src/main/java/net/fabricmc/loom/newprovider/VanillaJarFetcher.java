@@ -65,68 +65,43 @@ public class VanillaJarFetcher extends NewProvider<VanillaJarFetcher> {
 	public VanillaJarFetcher fetch() throws Exception {
 		Check.notNull(mc, "minecraft version");
 		
-		//TODO: skipIfNewerThan doesn't work inside getOrCreate
-		Props indexProps = props.copy().remove("mcversion"); //Manifest is independent of the minecraft version.
-		Path versionManifestIndexJson = getOrCreate(getCacheDir().resolve(indexProps.subst("version_manifest_{HASH}.json")), dest -> {
-			log.info("|-> Downloading manifest index to {}...", dest);
-			newDownloadSession("https://launchermeta.mojang.com/mc/game/version_manifest.json")
-				.dest(dest)
-				.etag(true)
-				.gzip(true)
-				.skipIfNewerThan(Period.ofDays(14))
-				.download();
-		});
-		log.lifecycle("] manifest index: {}", versionManifestIndexJson);
-		
-		log.info("|-> Parsing manifest index...");
-		ManifestIndex versionManifestIndex = ManifestIndex.read(versionManifestIndexJson);
-		ManifestIndex.VersionData selectedVersion;
-		if(customManifestUrl != null) {
-			log.lifecycle("!! Using custom Minecraft per-version manifest at URL: {}", customManifestUrl);
-			selectedVersion = new ManifestIndex.VersionData();
-			selectedVersion.id = mc.getVersion();
-			selectedVersion.url = customManifestUrl;
-		} else {
-			log.info("|-> Browsing manifest index, looking for per-version manifest for {}...", mc.getVersion());
-			selectedVersion = versionManifestIndex.versions.get(mc.getVersion().toLowerCase(Locale.ROOT));
-			if(selectedVersion == null || selectedVersion.url == null) {
-				throw new IllegalStateException("Could not find a per-version manifest corresponding to Minecraft version '" + mc.getVersion() + "' in version_manifest.json ('" + versionManifestIndexJson + "').");
-			}
-		}
-		
-		Path thisVersionManifestJson = getOrCreate(getCacheDir().resolve(props.subst("minecraft-" + mc.getFilenameSafeVersion() + "-info-{HASH}.json")), dest -> {
-			log.info("|-> Found URL for Minecraft {} per-version manifest, downloading to {}...", mc.getVersion(), dest);
-			newDownloadSession(selectedVersion.url)
-				.dest(dest)
-				.gzip(true)
-				.etag(true)
-				.download();
-		});
+        ManifestIndex.VersionData selectedVersion;
+        if (customManifestUrl != null) {
+            selectedVersion = new ManifestIndex.VersionData();
+            selectedVersion.id = mc.getVersion();
+            selectedVersion.url = customManifestUrl;
+        } else {
+            Props indexProps = props.copy().remove("mcversion");
+            Path index = newDownloadSession("https://launchermeta.mojang.com/mc/game/version_manifest.json")
+                .dest(getCacheDir().resolve(indexProps.subst("version_manifest_{HASH}.json")))
+                .etag(true).gzip(true).skipIfNewerThan(Period.ofDays(14)).download();
+            selectedVersion = ManifestIndex.read(index).versions.get(mc.getVersion().toLowerCase(Locale.ROOT));
+            if (selectedVersion == null || selectedVersion.url == null)
+                throw new IllegalStateException("No per-version manifest for Minecraft " + mc.getVersion() + " in " + index);
+        }
+        Path thisVersionManifestJson = newDownloadSession(selectedVersion.url)
+            .dest(getCacheDir().resolve(props.subst("minecraft-" + mc.getFilenameSafeVersion() + "-info-{HASH}.json")))
+            .etag(true).gzip(true).skipIfSha1Equals(selectedVersion.sha1)
+            .skipIfNewerThan(Period.ofDays(14)).download();
 		log.lifecycle("] this version manifest: {}", thisVersionManifestJson);
 		
 		log.info("|-> Parsing per-version manifest...");
 		versionManifest = VersionManifest.read(thisVersionManifestJson);
 		
-		clientJar = getOrCreate(getCacheDir().resolve(props.subst(clientFilename)), dest -> {
-			log.info("|-> Downloading Minecraft {} client jar to {}...", mc.getVersion(), dest);
-			newDownloadSession(versionManifest.downloads.get("client").url)
-				.dest(dest)
-				.etag(true)
-				.gzip(false)
-				.download();
-		});
-		log.lifecycle("] client jar: {}", clientJar);
-		
-		serverJar = getOrCreate(getCacheDir().resolve(props.subst(serverFilename)), dest -> {
-			log.info("|-> Downloading Minecraft {} server jar to {}...", mc.getVersion(), dest);
-			newDownloadSession(versionManifest.downloads.get("server").url)
-				.dest(dest)
-				.etag(true)
-				.gzip(false)
-				.download();
-		});
-		log.lifecycle("] server jar: {}", serverJar);
-		
+        clientJar = downloadGameJar(versionManifest.downloads.get("client"), getCacheDir().resolve(props.subst(clientFilename)));
+        serverJar = downloadGameJar(versionManifest.downloads.get("server"), getCacheDir().resolve(props.subst(serverFilename)));
+        log.lifecycle("] client jar: {}", clientJar);
+        log.lifecycle("] server jar: {}", serverJar);
+
 		return this;
 	}
+    Path downloadGameJar(VersionManifest.Downloads download, Path target) throws Exception {
+        if (download == null || download.url == null) throw new IllegalStateException("Missing game download metadata for " + target);
+        boolean missing = download.sha1 == null || download.sha1.trim().isEmpty();
+        if ((!missing && !download.sha1.matches("[0-9a-fA-F]{40}")) || (missing && customManifestUrl == null))
+            throw new IllegalStateException("Missing or invalid SHA-1 for game download " + target);
+        if (missing) log.warn("UNVERIFIED custom game download: no SHA-1 supplied; source={} target={}", download.url, target);
+        return newDownloadSession(download.url).dest(target).etag(true).gzip(false)
+            .skipIfSha1Equals(missing ? null : download.sha1).skipIfNewerThan(Period.ofDays(14)).download();
+    }
 }

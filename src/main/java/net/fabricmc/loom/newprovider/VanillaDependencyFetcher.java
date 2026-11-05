@@ -93,6 +93,7 @@ public class VanillaDependencyFetcher extends NewProvider<VanillaDependencyFetch
 				//download the natives jar
 				Path libJar = newDownloadSession(nativeArtifact.url)
 					.dest(nativeArtifact.resolveFlat(dest.resolve("jars")))
+                    .skipIfSha1Equals(nativeArtifact.sha1)
 					.etag(false) //no need to save etag, this directory is fresh.
 					.gzip(true)
 					.download();

@@ -14,6 +14,41 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 
 public class DownloadSessionTest {
+    private static final class ProviderProbe extends net.fabricmc.loom.newprovider.NewProvider<ProviderProbe> {
+        ProviderProbe(Project project, LoomGradleExtension extension) { super(project, extension); }
+        Path fetch(Path target, String url) throws Exception {
+            return getOrCreate(target, path -> newDownloadSession(url).dest(path).download());
+        }
+    }
+
+    @Test(timeout = 20000) public void providerAndDownloaderShareOneReentrantCentralLock() throws Exception {
+        Project project = ProjectBuilder.builder().build();
+        LoomGradleExtension extension = project.getExtensions().create("minecraft", LoomGradleExtension.class, project);
+        Path target = project.getProjectDir().toPath().resolve("fresh-cache/download.bin");
+        byte[] bytes = "provider download".getBytes("UTF-8");
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/file", exchange -> {
+            requests.incrementAndGet();
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (java.io.OutputStream out = exchange.getResponseBody()) { out.write(bytes); }
+        });
+        server.start();
+        try {
+            ProviderProbe provider = new ProviderProbe(project, extension);
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/file";
+            assertEquals(target, provider.fetch(target, url));
+            assertEquals(target, provider.fetch(target, url));
+            assertEquals(1, requests.get());
+            assertArrayEquals(bytes, Files.readAllBytes(target));
+            Path lock = net.fabricmc.loom.util.CacheLock.lockFile(WellKnownLocations.getCacheLocks(project), target);
+            assertTrue(Files.isRegularFile(lock));
+            assertTrue(lock.getFileName().toString().matches("[0-9a-f]{64}\\.lock"));
+            assertFalse(Files.exists(target.resolveSibling("download.bin.lock")));
+            assertFalse(Files.exists(target.resolveSibling("download.bin.provider.lock")));
+        } finally { server.stop(0); }
+    }
+
     @Test public void concurrentDownloadOfflineAndFailedRefreshPreserveCache() throws Exception {
         Project project = ProjectBuilder.builder().build();
         LoomGradleExtension extension = project.getExtensions().create("minecraft", LoomGradleExtension.class, project);

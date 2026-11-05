@@ -15,7 +15,7 @@ public class ModValidationTest {
         File file = tmp.newFile();
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
-        manifest.getMainAttributes().putValue("RetroMixinConfigs", "mixins.example.json");
+        manifest.getMainAttributes().putValue("MixinConfigs", "mixins.example.json");
         try (JarOutputStream out = new JarOutputStream(new java.io.FileOutputStream(file), manifest)) {
             out.putNextEntry(new JarEntry("mixins.example.json"));
             out.write("{\"refmap\":\"example.refmap.json\"}".getBytes(StandardCharsets.UTF_8));

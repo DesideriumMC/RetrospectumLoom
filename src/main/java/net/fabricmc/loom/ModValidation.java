@@ -9,8 +9,8 @@ import java.util.jar.JarFile;
 import org.gradle.api.GradleException;
 
 /** Checks the actual archive, so excluded resources and stale AP outputs cannot pass. */
-final class ModValidation {
-    static void archive(File file) {
+public final class ModValidation {
+    public static void archive(File file) {
         try (JarFile jar = new JarFile(file)) {
             java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
             while (entries.hasMoreElements()) {
@@ -24,7 +24,7 @@ final class ModValidation {
                 }
             }
             if (jar.getManifest() == null) return;
-            String configs = jar.getManifest().getMainAttributes().getValue("RetroMixinConfigs");
+            String configs = jar.getManifest().getMainAttributes().getValue("MixinConfigs");
             if (configs == null) return;
             for (String name : configs.split(",")) {
                 name = name.trim();

@@ -54,7 +54,7 @@ public class DownloadSession {
 		try {
 			this.url = new URL(url);
 		} catch (MalformedURLException pls) {
-			throw new IllegalArgumentException("Skill issue", pls);
+			throw new IllegalArgumentException("Invalid download URL", pls);
 		}
 		return this;
 	}
@@ -94,105 +94,90 @@ public class DownloadSession {
 		return this;
 	}
 	
-	public Path download() throws IOException {
-		Check.notNull(url, "url");
-		Check.notNull(dest, "dest");
-		Files.createDirectories(dest.toAbsolutePath().getParent());
-		Path lockPath = dest.resolveSibling(dest.getFileName() + ".lock").toAbsolutePath().normalize();
-		synchronized (lockPath.toString().intern()) {
-			try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(lockPath,
-					java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
-				 java.nio.channels.FileLock lock = channel.lock()) {
-				return downloadLocked();
-			}
-		}
-	}
+    public Path download() throws IOException {
+        Check.notNull(url, "url");
+        Check.notNull(dest, "dest");
+        return CacheLock.withLock(net.fabricmc.loom.WellKnownLocations.getCacheLocks(project), dest, this::downloadLocked);
+    }
 
-	private Path downloadLocked() throws IOException {
-		
-		boolean destExists = Files.exists(dest);
-		
-		//If we're offline, assume the file is up-to-date enough; and if we don't have the file, there's no way to get it.
-		if(extension.offline) {
-			if(destExists) {
-				if(skipIfSha1 != null && !Checksum.compareFileHexHash(dest, skipIfSha1, Checksum.SHA1.get()))
-					throw new IOException("Offline cache checksum mismatch: source=" + url + " path=" + dest + " expectedSha1=" + skipIfSha1);
-				info("Not connecting to {} because {} exists and we're in offline mode.", url, dest);
-				return dest;
-			} else throw new IllegalStateException("Need to download " + url + " to " + dest + ", but Gradle was started in offline mode. Aborting."); 
-		}
-		
-		//More fine-grained up-to-dateness checks that we skip in refreshDependencies mode.
-		if(destExists && !extension.refreshDependencies) {
-			if(skipIfExists) {
-				info("Not connecting to {} because {} exists.", url, dest);
-				return dest;
-			}
-			if(skipIfSha1 != null && Checksum.compareFileHexHash(dest, skipIfSha1, Checksum.SHA1.get())) {
-				info("Not connecting to {} because {} exists and has correct SHA-1 hash ({}).", url, dest, skipIfSha1);
-				return dest;
-			}
-			if(skipIfNewerThan != null && Files.getLastModifiedTime(dest).toInstant().isAfter(Instant.now().minus(skipIfNewerThan))) {
-				info("Not connecting to {} because {} exists and was downloaded within {}.", url, dest, skipIfNewerThan);
-				return dest;
-			}
-		}
-		
-		HttpURLConnection conn = (HttpURLConnection) url.openConnection(); //doesnt actually open html connection yet
-		conn.setConnectTimeout(20000);
-		conn.setReadTimeout(30000);
-		
-		//Read the locally known etag, if one exists, and set the etag header.
-		String knownEtag = null;
-		Path etagFile = dest.resolveSibling(dest.getFileName().toString() + ".etag");
-		if(useEtag && destExists && Files.exists(etagFile) && !extension.refreshDependencies) {
-			knownEtag = new String(Files.readAllBytes(etagFile), StandardCharsets.UTF_8);
-			conn.setRequestProperty("If-None-Match", knownEtag);
-			conn.setIfModifiedSince(Files.getLastModifiedTime(dest).toMillis());
-		}
-		
-		//Request a gzip header, if compression was requested.
-		if(requestGzip) conn.setRequestProperty("Accept-Encoding", "gzip");
-		
-		//Actually connect.
-		lifecycle("Establishing connection to {} (sending etag header: {}, gzip encoding: {})...", url, knownEtag != null, requestGzip);
-		conn.connect();
-		
-		//We'll take a 304, or something in the OK section.
-		int code = conn.getResponseCode();
-		if(code == HttpURLConnection.HTTP_NOT_MODIFIED) {
-			lifecycle("\\-> Not Modified (etag match)"); //The server *shouldn't* send a 304 if we didn't send an etag?
-			return dest;
-		} else if(code / 100 != 2) {
-			throw new IOException("Got " + code + " " + conn.getResponseMessage() + " from connection to " + url);
-		}
-		
-		//Download the entire file and save it to disk.
-		lifecycle("\\-> Saving to {} ", dest);
-		Files.createDirectories(dest.getParent());
-		Path temp = Files.createTempFile(dest.toAbsolutePath().getParent(), "download-", ".part");
-		try {
-			try(InputStream in = "gzip".equals(conn.getContentEncoding()) ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream()) {
-				Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
-			}
-			if(skipIfSha1 != null && !Checksum.compareFileHexHash(temp, skipIfSha1, Checksum.SHA1.get()))
-				throw new IOException("Download checksum mismatch: source=" + url + " expectedSha1=" + skipIfSha1);
-			Files.move(temp, dest, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		} finally {
-			Files.deleteIfExists(temp);
-			conn.disconnect();
-		}
-		
-		//Save the etag to disk too, if one was sent alongside the file.
-		String srvEtag = conn.getHeaderField("ETag");
-		if(useEtag && srvEtag != null) {
-			info("\\-> Saving etag to {} ", etagFile);
-			Files.write(etagFile, srvEtag.getBytes(StandardCharsets.UTF_8));
-		}
-		
-		return dest;
-	}
-	
+    private Path downloadLocked() throws IOException {
+        boolean exists = Files.exists(dest);
+        if (exists && !Files.isRegularFile(dest))
+            throw new IOException("Download target is not a regular file: " + dest);
+        boolean valid = exists && (skipIfSha1 == null || Checksum.compareFileHexHash(dest, skipIfSha1, Checksum.SHA1.get()));
+        if (extension.offline) {
+            if (!exists) throw new IllegalStateException("Need to download " + url + " to " + dest
+                + ", but Gradle was started in offline mode. Aborting.");
+            if (!valid) throw new IOException("Offline cache checksum mismatch: source=" + url
+                + " path=" + dest + " expectedSha1=" + skipIfSha1);
+            info("Not connecting to {} because {} exists and we're in offline mode.", url, dest);
+            return dest;
+        }
+        if (exists && !extension.refreshDependencies) {
+            // A declared checksum takes precedence over existence/age shortcuts.
+            if (skipIfSha1 != null && valid) return dest;
+            if (skipIfSha1 == null && skipIfExists) return dest;
+            if (skipIfSha1 == null && skipIfNewerThan != null
+                && Files.getLastModifiedTime(dest).toInstant().isAfter(Instant.now().minus(skipIfNewerThan))) return dest;
+        }
+
+        Path etagFile = dest.resolveSibling(dest.getFileName() + ".etag");
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setConnectTimeout(20000);
+        connection.setReadTimeout(30000);
+        try {
+            String knownEtag = null;
+            // A damaged file must not be accepted through a conditional 304.
+            if (useEtag && valid && Files.isRegularFile(etagFile) && !extension.refreshDependencies) {
+                knownEtag = new String(Files.readAllBytes(etagFile), StandardCharsets.UTF_8).trim();
+                if (knownEtag.isEmpty()) knownEtag = null;
+                if (knownEtag != null) {
+                    connection.setRequestProperty("If-None-Match", knownEtag);
+                    connection.setIfModifiedSince(Files.getLastModifiedTime(dest).toMillis());
+                }
+            }
+            if (requestGzip) connection.setRequestProperty("Accept-Encoding", "gzip");
+            lifecycle("Establishing connection to {} (sending etag header: {}, gzip encoding: {})...",
+                url, knownEtag != null, requestGzip);
+            int code = connection.getResponseCode();
+            if (code == HttpURLConnection.HTTP_NOT_MODIFIED) {
+                if (knownEtag == null || !valid || !Files.isRegularFile(dest))
+                    throw new IOException("Unexpected HTTP 304 without a valid conditional cache: " + url);
+                return dest;
+            }
+            if (code / 100 != 2)
+                throw new IOException("Got " + code + " " + connection.getResponseMessage() + " from connection to " + url);
+
+            String receivedEtag = connection.getHeaderField("ETag");
+            Path temporary = Files.createTempFile(dest.toAbsolutePath().getParent(), "download-", ".part");
+            try {
+                try (InputStream network = connection.getInputStream()) {
+                    if ("gzip".equalsIgnoreCase(connection.getContentEncoding())) {
+                        try (InputStream decoded = new GZIPInputStream(network)) {
+                            Files.copy(decoded, temporary, StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    } else {
+                        Files.copy(network, temporary, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                }
+                if (skipIfSha1 != null && !Checksum.compareFileHexHash(temporary, skipIfSha1, Checksum.SHA1.get()))
+                    throw new IOException("Download checksum mismatch: source=" + url + " expectedSha1=" + skipIfSha1);
+                // Invalidate the old tag before committing a new body. If writing
+                // the new metadata fails, the next request will be unconditional.
+                Files.deleteIfExists(etagFile);
+                AtomicFiles.replace(temporary, dest);
+                if (useEtag && receivedEtag != null)
+                    AtomicFiles.write(etagFile, receivedEtag.getBytes(StandardCharsets.UTF_8));
+            } finally {
+                Files.deleteIfExists(temporary);
+            }
+            return dest;
+        } finally {
+            // Includes 304, HTTP errors and failures before a temporary file exists.
+            connection.disconnect();
+        }
+    }
+
 	private void info(String x, Object... fmt) {
 		if(!quiet) project.getLogger().info(x, fmt);
 	}

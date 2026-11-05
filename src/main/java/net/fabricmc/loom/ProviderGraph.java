@@ -227,6 +227,7 @@ public class ProviderGraph {
 		log.lifecycle("# ({}) Remapping mod dependencies...", side);
 		new DependencyRemapperMcp(project, extension)
 			.superProps(naive)
+            .side(side)
 			.mappingsDepString(mappingsWrapper.getFilenameSafeDepString())
 			.srg(mappings.chooseSrg(side))
 			.fields(mappings.fields)

@@ -7,6 +7,17 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class MixinMappingsTest {
+    @Test public void inventedInnerClassNameCanBeUsedInJavaSource() {
+        Srg mappings = new Srg();
+        mappings.putClassMapping("a", "example/Outer");
+        JarScanData scan = new JarScanData();
+        scan.innerClassData.put("a", java.util.Collections.singleton("b"));
+        mappings.augment(scan);
+        String name = mappings.classMappings.get("b").substring("example/".length());
+        assertTrue(Character.isJavaIdentifierStart(name.charAt(0)));
+        for (char c : name.toCharArray()) assertTrue(Character.isJavaIdentifierPart(c));
+    }
+
     @Test public void inversePreservesOwnersAndMinecraftDescriptors() {
         Srg source = new Srg();
         source.putClassMapping("named/Stack", "srg/Stack");

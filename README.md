@@ -11,19 +11,19 @@ decompilation, Mixin annotation processing, SRG remapping and IDE run configurat
 | Compilation and annotation processing | 8 |
 | Target API and default game runtime | 7 |
 
-Mod classes use Java 6 bytecode for Forge's class scanner. The game runs on Java 7 or 8.
+Mod classes currently use Java 6 bytecode for the legacy transformation pipeline. The game runs on Java 7 or 8.
 
 ## Build
 
 ```sh
 ./gradlew test build
 ./gradlew publish
-./gradlew -Pversion=0.1.0 loomDistribution
+./gradlew -Pversion=0.2.0 loomDistribution
 ```
 
-The plugin JAR is `build/libs/retrospectum-loom-0.1.0.jar`.
+The plugin JAR is `build/libs/retrospectum-loom-0.2.0.jar`.
 `publish` writes the plugin and marker artifacts to `build/maven/`.
-The implementation coordinate is `dev.desiderium.retro:retrospectum-loom:0.1.0`.
+The implementation coordinate is `dev.desiderium.retro:retrospectum-loom:0.2.0`.
 
 The `loomDistribution` task packages the plugin, marker and dependency metadata
 as a local Maven repository ZIP under `build/distributions/`. Extract it into
@@ -69,29 +69,8 @@ DSL. Optional build flags use `retrospectum.*` (for example,
 project entries use `.gradle/retrospectum-loom-cache`. Regenerate caches after
 upgrading from earlier checkouts.
 
-## CI artifacts
+## Reference
 
-GitHub Actions runs on pushes, pull requests and manual dispatch, on Linux and
-Windows. It runs tests, validates the plugin and packages version `0.1.0`.
-Download the plugin, sources, Javadoc and portable Maven repository ZIP from the
-workflow's **Artifacts** section. Test reports are uploaded even on failure.
-The Build workflow packages artifacts; the Release Maven workflow handles remote publishing.
-
-Override the version for a future build with `-Pversion=<version>`.
-
-For a version override, set `RELEASE_VERSION` to the same value when running
-`python scripts/verify_artifacts.py`. CI passes this value to Gradle as `-Pversion`.
-
-## Hosted Maven releases
-
-The public repository is `https://maven.desiderium.dev/releases/`.
-The **Release Maven** workflow verifies Linux and Windows builds and checks R2
-credentials. Enable its **publish** input to upload the Linux Maven artifacts.
-Use a new stable `MAJOR.MINOR.PATCH` version for changed binaries. Existing files
-are accepted only when identical, so interrupted uploads can be retried. Metadata
-updates preserve earlier versions and run serially within this repository.
-
-Configure organization or repository Actions secrets `R2_ACCESS_KEY_ID` and
-`R2_SECRET_ACCESS_KEY`, restricted to the `desiderium-maven` bucket. Organization
-secrets must grant this repository access. A run with **publish** disabled builds
-and checks credentials without uploading artifacts.
+- [Compatibility and stable interface names](https://github.com/DesideriumMC/RetrospectumModTemplate/blob/main/docs/COMPATIBILITY.md)
+- [Troubleshooting](https://github.com/DesideriumMC/RetrospectumModTemplate/blob/main/docs/TROUBLESHOOTING.md)
+- [Release procedure](RELEASING.md)

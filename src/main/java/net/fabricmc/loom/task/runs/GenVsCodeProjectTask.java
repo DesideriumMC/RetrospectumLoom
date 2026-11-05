@@ -108,6 +108,7 @@ public class GenVsCodeProjectTask extends DefaultTask implements LoomTaskExt {
 
 		VsCodeConfiguration(RunConfig runConfig) {
 			this.name = runConfig.getBaseName();
+            this.cwd = runConfig.resolveRunDir().toAbsolutePath().toString();
 			this.mainClass = runConfig.getMainClass();
 			this.vmArgs = runConfig.stringifyVmArgs();
 			this.args = runConfig.stringifyProgramArgs();

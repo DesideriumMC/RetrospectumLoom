@@ -24,7 +24,6 @@
 
 package net.fabricmc.loom;
 
-import groovy.util.Node;
 import net.fabricmc.loom.task.ConfigurationDebugTask;
 import net.fabricmc.loom.task.GenSourcesTask;
 import net.fabricmc.loom.task.RemappedConfigEntryFolderCopyTask;
@@ -38,15 +37,12 @@ import net.fabricmc.loom.task.runs.GenIdeaRunConfigsTask;
 import net.fabricmc.loom.task.runs.GenVsCodeProjectTask;
 import net.fabricmc.loom.util.Check;
 import net.fabricmc.loom.util.GradleSupport;
-import net.fabricmc.loom.util.GroovyXmlUtil;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
 import org.gradle.api.plugins.JavaPlugin;
-import org.gradle.api.publish.PublishingExtension;
-import org.gradle.api.publish.maven.MavenPublication;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.AbstractArchiveTask;
@@ -58,7 +54,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -117,7 +112,6 @@ public class LoomGradlePlugin implements Plugin<Project> {
 		//Oh, and there's inheritance relationships between them too.
 		//You can read a bit more about what "extendsFrom" does here: https://docs.gradle.org/current/userguide/declaring_dependencies.html#sub:config-inheritance-composition
 		//In short, I think that if configuration A extends B, all the artifacts in B have to be ready before A can be ready.
-		Configuration compileOrImplementation = GradleSupport.getCompileOrImplementationConfiguration(project.getConfigurations());
 		
 		//Vanilla Minecraft, straight off Mojang's server.
 		project.getConfigurations().maybeCreate(Constants.MINECRAFT).setTransitive(false);
@@ -134,14 +128,15 @@ public class LoomGradlePlugin implements Plugin<Project> {
 		
 		//Mappings. This is the raw MCP artifact, and the processed mapping jar is located elsewhere (using provider system).
 		project.getConfigurations().maybeCreate(Constants.MAPPINGS).setTransitive(true);
-		//compileOrImplementation.extendsFrom(mappings); //Not needed I don't think
 		
 		//Custom access transformers.
 		project.getConfigurations().maybeCreate(Constants.CUSTOM_ACCESS_TRANSFORMERS).setTransitive(false);
 		
 		//Vanilla Minecraft + Forge, remapped to the mappings chosen by the modder.
 		Configuration minecraftNamed = project.getConfigurations().maybeCreate(Constants.MINECRAFT_NAMED).setTransitive(false);
-		compileOrImplementation.extendsFrom(minecraftNamed);
+		// Game dependencies belong to development classpaths, never published Java variants.
+		project.getConfigurations().getByName(JavaPlugin.COMPILE_CLASSPATH_CONFIGURATION_NAME).extendsFrom(minecraftNamed);
+		project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME).extendsFrom(minecraftNamed);
 		minecraftNamed.extendsFrom(minecraftDependencies);
 		minecraftNamed.extendsFrom(forgeDependencies);
 		
@@ -247,6 +242,10 @@ public class LoomGradlePlugin implements Plugin<Project> {
 		
 		//Remapping artifacts:
 		tasks.register("remapJarForRelease", ReobfJarTask.class, t -> t.dependsOn(tasks.named("jar")));
+        tasks.register("exportReleaseMappings", net.fabricmc.loom.task.ExportReleaseMappingsTask.class, task -> {
+            task.setGroup(Constants.TASK_GROUP_PLUMBING);
+            task.getOutputFile().set(project.getLayout().getBuildDirectory().file("retromixin/mappings/release.srg"));
+        });
 		tasks.named("build").configure(t -> t.dependsOn(tasks.named("remapJarForRelease")));
 		
 		//IDE integration:
@@ -306,10 +305,22 @@ public class LoomGradlePlugin implements Plugin<Project> {
 		//their settings in LoomGradleExtension, but before we're not allowed to mutate the project dependencies anymore".
 		extension.getProviderGraph().trySetup();
 		
+        org.gradle.api.tasks.TaskProvider<net.fabricmc.loom.task.ExportReleaseMappingsTask> releaseMappings =
+            project.getTasks().named("exportReleaseMappings", net.fabricmc.loom.task.ExportReleaseMappingsTask.class, task -> {
+                task.setGroup(Constants.TASK_GROUP_PLUMBING);
+                task.setDescription("Exports the configured MCP to SRG release mappings.");
+                if (extension.getProviderGraph().reobfSrg != null)
+                    task.getMappingLines().set(net.fabricmc.loom.mcp.SrgSnapshot.lines(extension.getProviderGraph().reobfSrg));
+                task.getOutputFile().set(project.getLayout().getBuildDirectory().file("retromixin/mappings/release.srg"));
+            });
+
 		//Configure the for-release remapper
 		AbstractArchiveTask jarTask = (AbstractArchiveTask) project.getTasks().getByName("jar");
 		ReobfJarTask reobfJarTask = (ReobfJarTask) project.getTasks().findByName("remapJarForRelease");
 		Check.notNull(reobfJarTask, "reobfJarTask");
+        reobfJarTask.getMappingsFile().set(releaseMappings.flatMap(net.fabricmc.loom.task.ExportReleaseMappingsTask::getOutputFile));
+        reobfJarTask.getRemapClasspath().from(project.getConfigurations().getByName(JavaPlugin.COMPILE_CLASSPATH_CONFIGURATION_NAME));
+        reobfJarTask.getAsm4Compatibility().set(extension.forgeCapabilities.needsAsm4Compat.get());
 		
 		if(!reobfJarTask.getInput().isPresent()) {
 			//unless you configured it otherwise, move the regular jar to having the -dev classifier,
@@ -318,54 +329,12 @@ public class LoomGradlePlugin implements Plugin<Project> {
 			GradleSupport.setClassifier(reobfJarTask, "");
 			reobfJarTask.getInput().set(GradleSupport.getArchiveFile(jarTask));
 		}
+        if (GradleSupport.getArchiveFile(jarTask).equals(reobfJarTask.getArchiveFile().get().getAsFile()))
+            throw new org.gradle.api.GradleException("Development and release archives must use different output paths; keep the development jar classifier 'dev'.");
 		project.getArtifacts().add("archives", reobfJarTask);
 		
 		//add to classpath for runClient (TODO do this a different way? configurations? artifacts?)
 		extension.addUnmappedMod(GradleSupport.getArchiveFile(jarTask).toPath());
-		
-		//Configure a few Maven publishing settings. I (quat)'m not familiar with maven publishing so idk
-		//I think this adds stuff declared in the modCompile, modImplementation etc configurations into the maven pom
-		PublishingExtension mavenPublish = project.getExtensions().findByType(PublishingExtension.class);
-		if(mavenPublish != null) {
-			List<MavenPublication> mavenPubs = mavenPublish.getPublications().stream()
-				.filter(p -> p instanceof MavenPublication)
-				.map(p -> (MavenPublication) p)
-				.collect(Collectors.toList());
-			
-			for(RemappedConfigurationEntry entry : extension.remappedConfigurationEntries) {
-				String mavenScope = entry.getMavenScope();
-				if(mavenScope == null || mavenScope.isEmpty()) continue;
-				
-				Configuration compileModsConfig = entry.getInputConfig();
-				for(MavenPublication pub : mavenPubs) {
-					pub.pom(pom -> pom.withXml(xml -> {
-						Node dependencies = GroovyXmlUtil.getOrCreateNode(xml.asNode(), "dependencies");
-						Set<String> foundArtifacts = new HashSet<>();
-						
-						GroovyXmlUtil.childrenNodesStream(dependencies).filter((n) -> GroovyXmlUtil.hasName(n, "dependency")).forEach((n) -> {
-							Optional<Node> groupId = GroovyXmlUtil.getNode(n, "groupId");
-							Optional<Node> artifactId = GroovyXmlUtil.getNode(n, "artifactId");
-							
-							if(groupId.isPresent() && artifactId.isPresent()) {
-								foundArtifacts.add(groupId.get().text() + ":" + artifactId.get().text());
-							}
-						});
-						
-						for(Dependency dependency : compileModsConfig.getAllDependencies()) {
-							if(foundArtifacts.contains(dependency.getGroup() + ":" + dependency.getName())) {
-								continue;
-							}
-							
-							Node depNode = dependencies.appendNode("dependency");
-							depNode.appendNode("groupId", dependency.getGroup());
-							depNode.appendNode("artifactId", dependency.getName());
-							depNode.appendNode("version", dependency.getVersion());
-							depNode.appendNode("scope", mavenScope);
-						}
-					}));
-				}
-			}
-		}
 		
 		//User's post-setup actions
 		if(!extension.afterMinecraftSetupActions.isEmpty()) {

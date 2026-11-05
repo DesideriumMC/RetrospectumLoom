@@ -162,6 +162,12 @@ public class RunConfig implements Named {
 			copy.vmArg("-Dfml.ignoreInvalidMinecraftCertificates=true");
 		}
 		
+        if (ext.useMixinBootstrap) {
+            copy.programArg("--tweakClass=dev.desiderium.retro.mixin.bootstrap.RetroMixinTweaker");
+            if (!ext.mixinConfigs.isEmpty())
+                copy.property("retromixin.mixin.configs", String.join(",", ext.mixinConfigs));
+        }
+
 		//Toolchains nonsense
 		copy.autoConfigureToolchains &= ext.autoConfigureToolchains;
 		if(copy.autoConfigureToolchains) {

@@ -13,7 +13,7 @@ import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.jvm.tasks.Jar;
 
-/** Experimental P2 wiring. Dependencies remain explicit in the consuming build. */
+/** Mixin AP and refmap wiring. Dependencies remain explicit in the consuming build. */
 final class MixinIntegration {
     static void configure(Project project, LoomGradleExtension extension, String sourceSetName, String refmapName) {
         if (!refmapName.matches("[A-Za-z0-9_.-]+\\.json")) throw new GradleException("Mixin refmap must be a plain JSON filename");
@@ -23,25 +23,26 @@ final class MixinIntegration {
         extension.mixinRefmaps.put(sourceSetName, refmapName);
         String suffix = sourceSetName.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + sourceSetName.substring(1);
         File directory = new File(project.getBuildDir(), "retromixin/mixin/" + sourceSetName);
-        File forward = new File(directory, "mcp-srg.srg");
-        File reverse = new File(directory, "srg-mcp.srg");
+        TaskProvider<net.fabricmc.loom.task.ExportReleaseMappingsTask> release = project.getTasks()
+            .named("exportReleaseMappings", net.fabricmc.loom.task.ExportReleaseMappingsTask.class);
+        if (!project.getTasks().getNames().contains("exportMixinMappings")) {
+            project.getTasks().register("exportMixinMappings", net.fabricmc.loom.task.ExportMixinMappingsTask.class, task -> {
+                task.getMappingsFile().set(release.flatMap(net.fabricmc.loom.task.ExportReleaseMappingsTask::getOutputFile));
+                task.getReverseFile().set(project.getLayout().getBuildDirectory().file("retromixin/mappings/srg-mcp.srg"));
+            });
+            extension.runConfigs.all(run -> {
+                run.property("mixin.env.remapRefMap", "true");
+                run.property("mixin.env.refMapRemappingFile", project.getLayout().getBuildDirectory()
+                    .file("retromixin/mappings/srg-mcp.srg").get().getAsFile().getAbsolutePath());
+                run.property("mixin.env.refMapRemappingEnv", "searge");
+            });
+        }
+        File forward = release.get().getOutputFile().get().getAsFile();
         File extra = new File(directory, "extra.srg");
         File refmap = new File(directory, refmapName);
         TaskProvider<org.gradle.api.Task> export = project.getTasks().register("export" + suffix + "MixinMappings", task -> {
-            task.getOutputs().files(forward, reverse);
-            // The provider graph still runs during configuration; P4 will model its inputs.
-            task.getOutputs().upToDateWhen(t -> false);
-            task.doLast(t -> {
-                Srg mappings = extension.getProviderGraph().reobfSrg;
-                if (mappings == null || !extension.forgeCapabilities.distributionNamingScheme.get().equals(Constants.INTERMEDIATE_NAMING_SCHEME)) {
-                    throw new GradleException("Mixin integration requires joined MCP -> SRG release mappings");
-                }
-                try {
-                    Files.createDirectories(directory.toPath());
-                    mappings.writeTo(forward.toPath());
-                    MixinMappings.inverse(mappings).writeTo(reverse.toPath());
-                } catch (Exception e) { throw new GradleException("Cannot export Mixin mappings", e); }
-            });
+            task.dependsOn("exportMixinMappings");
+            task.setDescription("Prepares shared mappings for the " + sourceSetName + " Mixin processor.");
         });
         TaskProvider<JavaCompile> compile = project.getTasks().named(source.getCompileJavaTaskName(), JavaCompile.class);
         compile.configure(task -> {
@@ -70,11 +71,6 @@ final class MixinIntegration {
         project.getTasks().named("remapJarForRelease", ReobfJarTask.class).configure(task -> {
             task.dependsOn(compile);
             task.getMixinMappings().from(extra);
-        });
-        extension.runConfigs.all(run -> {
-            run.property("mixin.env.remapRefMap", "true");
-            run.property("mixin.env.refMapRemappingFile", reverse.getAbsolutePath());
-            run.property("mixin.env.refMapRemappingEnv", "searge");
         });
         project.getTasks().matching(t -> t.getName().equals("runClient") || t.getName().equals("runServer"))
             .configureEach(t -> t.dependsOn(export));

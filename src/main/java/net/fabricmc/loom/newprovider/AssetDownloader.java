@@ -31,7 +31,6 @@ import net.fabricmc.loom.util.VersionManifest;
 import org.gradle.api.Project;
 
 import java.io.BufferedReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -50,7 +49,6 @@ public class AssetDownloader extends NewProvider<AssetDownloader> {
 	
 	//outputs
 	private Path assetIndexJson;
-	private Path finishedFlag;
 	private Path assetsDownloadDir;
 	private Path assetsGameRoot;
 	private boolean legacyLayout;
@@ -81,20 +79,16 @@ public class AssetDownloader extends NewProvider<AssetDownloader> {
 		Path assetsCache = getCacheDir().resolve("assets");
 		
 		assetIndexJson = assetsCache.resolve("indexes").resolve(versionManifest.assetIndexReference.id + ".json");
-		finishedFlag = assetIndexJson.resolveSibling(assetIndexJson.getFileName().toString() + ".retrospectum-dl-finished");
 		
-		//Let's not delete the assets themselves on refreshDependencies.
-		//They're rarely the problem, and take a long time to download.
-		//That's why i check freshAssetIndex before deleting it on refreshDependencies.
-		cleanOnRefreshDependencies(assetIndexJson);
-		
+        // DownloadSession refreshes the index transactionally; keep the previous
+        // index if its replacement fails. Asset bodies are checked individually.
+
 		//download asset index
 		newDownloadSession(versionManifest.assetIndexReference.url)
 			.dest(assetIndexJson)
 			.etag(true)
 			.gzip(true)
-			.skipIfSha1Equals(versionManifest.assetIndexReference.sha1) //TODO: kinda subsumed by skipIfExists lol
-			//.skipIfExists()
+			.skipIfSha1Equals(versionManifest.assetIndexReference.sha1)
 			.download();
 		
 		//parse it as json
@@ -170,7 +164,6 @@ public class AssetDownloader extends NewProvider<AssetDownloader> {
 		}
 		log.info("|-> Done!");
 		
-		Files.write(finishedFlag, "The presence of this file tells Retrospectum Loom that it's finished downloading assets.".getBytes(StandardCharsets.UTF_8));
 		
 		return this;
 	}

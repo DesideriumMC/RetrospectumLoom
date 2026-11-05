@@ -391,7 +391,7 @@ public class Srg {
 						suffix = innerClass.substring(dollarIndex);
 					} else {
 						//Well that sucks. Let's just make something up.
-						suffix = "$retrospectum-loom_invented$" + thinAirId[0]++;
+						suffix = "$retrospectum_loom_invented$" + thinAirId[0]++;
 					}
 					
 					classMappings.put(innerClass, classMappings.get(outerClass) + suffix);
