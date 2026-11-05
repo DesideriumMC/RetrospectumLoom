@@ -33,7 +33,6 @@ import org.gradle.api.JavaVersion;
 import org.gradle.api.tasks.JavaExec;
 
 import javax.inject.Inject;
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -67,10 +66,8 @@ public class RunTask extends JavaExec implements LoomTaskExt {
 		//Classpath
 		List<String> classpath = new ArrayList<>();
 
-		//TODO, this should also go in RunConfig#cook, one purpose of this is picking up on mod dependencies 
-		for(File file : getProject().getConfigurations().getByName("runtimeClasspath").getFiles()) {
-			classpath.add(file.getAbsolutePath());
-		}
+		// Preserve lazy task outputs and their build dependencies until execution.
+		classpath(getProject().getConfigurations().getByName("runtimeClasspath"));
 		
 		//TODO what is this about
 		for (Path file : extension.getUnmappedMods()) {
