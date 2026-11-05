@@ -75,7 +75,7 @@ GitHub Actions runs on pushes, pull requests and manual dispatch, on Linux and
 Windows. It runs tests, validates the plugin and packages version `0.1.0`.
 Download the plugin, sources, Javadoc and portable Maven repository ZIP from the
 workflow's **Artifacts** section. Test reports are uploaded even on failure.
-CI does not publish to a remote Maven repository or create GitHub releases.
+The Build workflow packages artifacts; the Release Maven workflow handles remote publishing.
 
 Override the version for a future build with `-Pversion=<version>`.
 
