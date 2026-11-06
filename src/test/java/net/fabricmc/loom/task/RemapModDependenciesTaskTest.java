@@ -1,6 +1,10 @@
 package net.fabricmc.loom.task;
 
 import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import net.fabricmc.loom.util.ZipUtil;
 import java.util.*;
 import java.util.zip.*;
 import net.fabricmc.loom.Constants;
@@ -18,7 +22,7 @@ public class RemapModDependenciesTaskTest {
         task.getOutputDirectory().set(output.toFile());
         task.getSrgLines().set(Collections.emptyList());
         task.getFieldNames().put("field_1", "readable");
-        task.getMethodNames().set(Collections.emptyMap());
+        task.getMethodNames().put("func_110302_j", "setupCustomSkin");
         task.getDistributionNamespace().set(Constants.INTERMEDIATE_NAMING_SCHEME);
         task.getAsm4Compatibility().set(false);
         write(input, 1);
@@ -34,6 +38,20 @@ public class RemapModDependenciesTaskTest {
                 }
             }, 0);
             assertEquals(Collections.singletonList("readable"), fields);
+        }
+        try (FileSystem jar = ZipUtil.openFs(mapped)) {
+            try (java.io.Reader reader = Files.newBufferedReader(jar.getPath("/custom.json"))) {
+                JsonObject refmap = new JsonParser().parse(reader).getAsJsonObject();
+                JsonObject mappings = refmap.getAsJsonObject("mappings");
+                JsonObject context = refmap.getAsJsonObject("data").getAsJsonObject("searge");
+                assertEquals(mappings, context);
+                assertEquals("Lexample/Player;setupCustomSkin()V",
+                    mappings.getAsJsonObject("example/Probe").get("func_110302_j").getAsString());
+                assertEquals("Lexample/Player;readable:I",
+                    mappings.getAsJsonObject("example/Probe").get("field").getAsString());
+            }
+            assertEquals("{\"refmap\":\"custom.json\"}",
+                new String(Files.readAllBytes(jar.getPath("/explicit.mixins.json")), StandardCharsets.UTF_8));
         }
         Files.write(input, new byte[]{1});
         try { task.remap(); fail("Accepted corrupt archive"); } catch (Exception expected) { }
@@ -58,6 +76,16 @@ public class RemapModDependenciesTaskTest {
         writer.visitEnd();
         try (ZipOutputStream jar = new ZipOutputStream(Files.newOutputStream(output))) {
             jar.putNextEntry(new ZipEntry("Probe.class")); jar.write(writer.toByteArray()); jar.closeEntry();
+            writeResource(jar, "explicit.mixins.json", "{\"refmap\":\"custom.json\"}");
+            String mappings = "{\"example/Probe\":{\"func_110302_j\":\"Lexample/Player;func_110302_j()V\","
+                + "\"field\":\"Lexample/Player;field_1:I\"}}";
+            writeResource(jar, "custom.json", "{\"mappings\":" + mappings + ",\"data\":{\"searge\":" + mappings + "}}");
         }
+    }
+
+    private static void writeResource(ZipOutputStream jar, String name, String content) throws Exception {
+        jar.putNextEntry(new ZipEntry(name));
+        jar.write(content.getBytes(StandardCharsets.UTF_8));
+        jar.closeEntry();
     }
 }
