@@ -63,7 +63,9 @@ public abstract class RemapModDependenciesTask extends DefaultTask {
                 } else if (!Constants.INTERMEDIATE_NAMING_SCHEME.equals(getDistributionNamespace().get())) {
                     throw new IllegalArgumentException("Unknown distribution namespace: " + getDistributionNamespace().get());
                 }
-                NaiveRenamer.doIt(input, output.resolve(outputName(archive)), getLogger(), fields, methods);
+                Path mapped = output.resolve(outputName(archive));
+                NaiveRenamer.doIt(input, mapped, getLogger(), fields, methods);
+                DependencyRefmaps.remap(mapped, fields, methods);
                 if (intermediate != null) Files.delete(intermediate);
             }
         });
