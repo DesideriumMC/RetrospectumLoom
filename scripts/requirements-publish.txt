@@ -1,5 +1,5 @@
 # Resolved wheels for the Python 3.13 release workflow; regenerate with pip download.
-boto3==1.43.124 --hash=sha256:62edd40fdeef6523ee2f73f4ccbe754fde79200ad0763bd86f4422e8125b2735
+boto3==1.43.126 --hash=sha256:5fda4a3dd2782c134a01d1678911962c2860dd8de8cd10bef168ba1507b371a9 --hash=sha256:dd701a973b02a73930e546a6a15d13edbfbedc3180bb3d55b0a88678c284ccd6
 botocore==1.43.124 --hash=sha256:4651bac68d1aef78d42c8aefb514a6cd86fda07971b8348652a9d24f21b07965
 jmespath==1.1.0 --hash=sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64
 python-dateutil==2.9.0.post0 --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
