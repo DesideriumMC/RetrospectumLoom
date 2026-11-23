@@ -36,7 +36,7 @@ jobs:
           python-version: '3.13'
       - run: >-
           python -m pip install --require-hashes --only-binary=:all: -r scripts/requirements-publish.txt
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: maven-repository-Linux
           path: build/maven
