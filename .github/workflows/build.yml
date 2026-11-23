@@ -52,7 +52,7 @@ jobs:
       - name: Verify publication
         run: python scripts/verify_artifacts.py
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: retrospectum-loom-${{ runner.os }}
           path: |
@@ -61,7 +61,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Upload Maven repository
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: maven-repository-${{ runner.os }}
           path: build/maven/
@@ -69,7 +69,7 @@ jobs:
           retention-days: 14
       - name: Upload verification reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: retrospectum-loom-reports-${{ runner.os }}
           path: |
